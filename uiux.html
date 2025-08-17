@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nafas Bersih – v3.0 Prototype</title>
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --card-bg: rgba(255,255,255,0.9); }
+    html, body { height: 100%; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    /* Smooth fade */
+    .fade-enter { opacity: 0; transform: translateY(6px); }
+    .fade-enter-active { opacity: 1; transform: translateY(0); transition: all .25s ease; }
+    .fade-exit { opacity: 1; }
+    .fade-exit-active { opacity: 0; transition: opacity .2s ease; }
+    .glass { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    .shadow-soft { box-shadow: 0 10px 30px rgba(0,0,0,.08); }
+    .rounded-2xl { border-radius: 1rem; }
+    .rounded-3xl { border-radius: 1.5rem; }
+    /* Leaflet sizing */
+    #map { width: 100%; height: calc(100vh - 72px); }
+    /* Dropdown */
+    .dropdown { display:none; }
+    .dropdown.open { display:block; }
+    /* Simple modal */
+    dialog::backdrop { background: rgba(0,0,0,.35); }
+    dialog { border: 0; border-radius: 1rem; padding: 0; }
+    /* Chart container */
+    .chart-wrap { position: relative; height: 280px; }
+  </style>
+  <!-- Leaflet & plugins -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <!-- Header / Navbar -->
+  <header class="sticky top-0 z-40 bg-white/90 glass shadow-soft">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-2xl bg-emerald-500 flex items-center justify-center text-white font-black">NB</div>
+        <div class="font-semibold tracking-tight">Nafas Bersih <span class="text-xs align-middle text-slate-500">v3.0</span></div>
+      </div>
+      <nav class="hidden md:flex items-center gap-2">
+        <button data-nav="home" class="nav-btn px-3 py-2 rounded-xl hover:bg-slate-100">Beranda</button>
+        <button data-nav="map" class="nav-btn px-3 py-2 rounded-xl hover:bg-slate-100">AQI Map</button>
+        <button data-nav="activity" class="nav-btn px-3 py-2 rounded-xl hover:bg-slate-100">Aktivitas</button>
+        <button data-nav="analytics" class="nav-btn px-3 py-2 rounded-xl hover:bg-slate-100">Analitik</button>
+        <button data-nav="profile" class="nav-btn px-3 py-2 rounded-xl hover:bg-slate-100">Profil</button>
+      </nav>
+      <div class="flex items-center gap-2">
+        <!-- Notification bell -->
+        <div class="relative">
+          <button id="btnBell" class="relative p-2 rounded-xl hover:bg-slate-100" aria-label="Notifikasi">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V8.25A6 6 0 006 8.25v1.5a8.967 8.967 0 01-2.311 6.022 23.848 23.848 0 005.454 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+            <span id="badgeBell" class="hidden absolute -top-1 -right-1 text-[10px] bg-rose-500 text-white rounded-full px-1.5 py-0.5"></span>
+          </button>
+          <div id="dropdownBell" class="dropdown absolute right-0 mt-2 w-80 max-h-[60vh] overflow-auto bg-white border border-slate-200 rounded-2xl shadow-soft p-2">
+            <div class="flex items-center justify-between mb-2 px-1">
+              <div class="font-semibold">Notifikasi</div>
+              <button id="btnClearNotif" class="text-xs text-slate-500 hover:text-slate-700">Tandai semua dibaca</button>
+            </div>
+            <div id="notifList" class="space-y-2"></div>
+          </div>
+        </div>
+        <!-- Login / Profile -->
+        <button id="btnLogin" class="px-3 py-2 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600">Masuk</button>
+        <div id="userChip" class="hidden items-center gap-2 pl-3 pr-2 py-1 rounded-full bg-slate-100">
+          <div class="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs" id="userInitial">U</div>
+          <span id="userName" class="text-sm font-medium">User</span>
+          <button id="btnLogout" class="ml-1 px-2 py-1 text-xs rounded-lg bg-white border hover:bg-slate-50">Keluar</button>
+        </div>
+        <!-- Mobile menu -->
+        <button id="btnMenu" class="md:hidden p-2 rounded-xl hover:bg-slate-100" aria-label="Menu">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- Mobile nav -->
+    <div id="mobileNav" class="md:hidden border-t hidden">
+      <div class="px-4 py-3 flex flex-wrap gap-2">
+        <button data-nav="home" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100">Beranda</button>
+        <button data-nav="map" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100">AQI Map</button>
+        <button data-nav="activity" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100">Aktivitas</button>
+        <button data-nav="analytics" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100">Analitik</button>
+        <button data-nav="profile" class="nav-btn w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100">Profil</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main>
+    <!-- Landing / Home -->
+    <section id="view-home" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div class="grid lg:grid-cols-2 gap-8 items-center">
+        <div>
+          <h1 class="text-3xl sm:text-4xl font-extrabold leading-tight">Nafas Bersih – Heatmap Polusi Hyper‑Local & Penjaga Pribadi</h1>
+          <p class="mt-3 text-slate-600">Prototipe front‑end responsif ini mewujudkan spesifikasi fungsional v3.0: peta heatmap, dasbor AQI, prediksi 48 jam, pengaturan jadwal, profil kesehatan, pusat notifikasi, dan analitik paparan pribadi — semuanya berjalan di sisi klien dengan data simulasi.</p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <button data-nav="map" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Buka AQI Map</button>
+            <button data-nav="activity" class="px-4 py-2 rounded-xl bg-white border hover:bg-slate-50">Kelola Jadwal</button>
+            <button data-nav="analytics" class="px-4 py-2 rounded-xl bg-white border hover:bg-slate-50">Lihat Analitik</button>
+          </div>
+          <div class="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="p-4 rounded-2xl bg-white shadow-soft">
+              <div class="text-xs text-slate-500">Realtime AQI</div>
+              <div class="text-2xl font-bold" id="homeAqi">–</div>
+              <div class="text-xs" id="homeAqiCat">–</div>
+            </div>
+            <div class="p-4 rounded-2xl bg-white shadow-soft">
+              <div class="text-xs text-slate-500">Lokasi</div>
+              <div class="text-sm font-semibold" id="homeLoc">Jakarta</div>
+              <div class="text-xs text-slate-500">(ditentukan otomatis)</div>
+            </div>
+            <div class="p-4 rounded-2xl bg-white shadow-soft">
+              <div class="text-xs text-slate-500">Prediksi</div>
+              <div class="text-sm">48 jam ke depan</div>
+            </div>
+            <div class="p-4 rounded-2xl bg-white shadow-soft">
+              <div class="text-xs text-slate-500">Status</div>
+              <div class="text-sm" id="homeAdvice">–</div>
+            </div>
+          </div>
+        </div>
+        <div class="relative">
+          <div class="rounded-3xl overflow-hidden shadow-soft border bg-white">
+            <img src="https://images.unsplash.com/photo-1578926374603-59b1096b9aa8?q=80&w=1600&auto=format&fit=crop" alt="City air" class="w-full h-72 object-cover">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AQI Map Page -->
+    <section id="view-map" class="hidden">
+      <div class="relative">
+        <!-- Map controls overlay (top-left) -->
+        <div class="absolute z-[500] left-3 top-3 w-[min(380px,95vw)]">
+          <div class="p-4 rounded-2xl bg-white/90 glass shadow-soft border space-y-3">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-xs text-slate-500">Lokasi terdeteksi</div>
+                <div id="mapLoc" class="font-semibold">–</div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-slate-500">AQI</div>
+                <div id="mapAqi" class="text-2xl font-extrabold">–</div>
+                <div id="mapCat" class="text-xs">–</div>
+              </div>
+            </div>
+            <div id="mapAdvice" class="text-sm text-slate-700"></div>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="flex items-center gap-2 text-sm"><input id="tglSensors" type="checkbox" class="accent-emerald-600" checked> Tampilkan Sensor</label>
+              <label class="flex items-center gap-2 text-sm"><input id="tglHeatmap" type="checkbox" class="accent-emerald-600" checked> Tampilkan Heatmap</label>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-xs text-slate-500 mb-1"><span>Prediksi (jam)</span><span id="lblHour">+0j</span></div>
+              <input id="timeSlider" type="range" min="0" max="48" value="0" class="w-full"/>
+            </div>
+          </div>
+        </div>
+        <!-- Map itself -->
+        <div id="map"></div>
+        <!-- Location detail panel -->
+        <div class="absolute z-[500] right-3 bottom-3 w-[min(420px,95vw)]">
+          <div class="p-4 rounded-2xl bg-white/90 glass shadow-soft border">
+            <div class="flex items-center justify-between mb-2">
+              <div class="font-semibold">Detail Lokasi</div>
+              <div id="locCoords" class="text-xs text-slate-500">–</div>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="chartLoc"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Activity (Schedules) -->
+    <section id="view-activity" class="hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="text-2xl font-bold">Manajemen Jadwal</h2>
+        <div class="flex items-center gap-2">
+          <button id="btnCheckNow" class="px-3 py-2 rounded-xl bg-white border hover:bg-slate-50">Cek Prediksi & Notifikasi</button>
+          <button id="btnAddSchedule" class="px-3 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Tambah Jadwal</button>
+        </div>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" id="scheduleList"></div>
+    </section>
+
+    <!-- Analytics -->
+    <section id="view-analytics" class="hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="grid gap-6 lg:grid-cols-3">
+        <div class="lg:col-span-2 p-4 bg-white rounded-2xl shadow-soft border">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold">Tren Paparan (14 hari)</h3>
+            <div class="text-xs text-slate-500" id="analyticsSubtitle">Diestimasi dari jadwal & prediksi</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartTrend"></canvas></div>
+        </div>
+        <div class="p-4 bg-white rounded-2xl shadow-soft border">
+          <h3 class="font-semibold mb-2">Ringkasan Mingguan</h3>
+          <div class="space-y-2" id="summaryCards"></div>
+        </div>
+      </div>
+      <div class="mt-6 grid gap-6 lg:grid-cols-3">
+        <div class="p-4 bg-white rounded-2xl shadow-soft border">
+          <h3 class="font-semibold mb-2">Paparan Harian (7 hari)</h3>
+          <div class="chart-wrap"><canvas id="chartDaily"></canvas></div>
+        </div>
+        <div class="lg:col-span-2 p-4 bg-white rounded-2xl shadow-soft border">
+          <h3 class="font-semibold mb-2">Momen Paparan Tertinggi</h3>
+          <div id="peakList" class="space-y-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Profile -->
+    <section id="view-profile" class="hidden max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <h2 class="text-2xl font-bold mb-4">Profil Kesehatan</h2>
+      <form id="formProfile" class="space-y-4 p-4 bg-white border rounded-2xl shadow-soft">
+        <div>
+          <label class="block text-sm font-medium">Nama Lengkap</label>
+          <input name="fullName" type="text" class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="contoh: Mahesa" />
+        </div>
+        <div>
+          <div class="text-sm font-medium mb-1">Kondisi Kesehatan</div>
+          <div class="grid sm:grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="asthma" class="accent-emerald-600"> Asma</label>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="copd" class="accent-emerald-600"> PPOK</label>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cvd" class="accent-emerald-600"> Penyakit kardiovaskular</label>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="pregnant" class="accent-emerald-600"> Hamil</label>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="child" class="accent-emerald-600"> Anak kecil di rumah</label>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">Catatan Tambahan</label>
+          <textarea name="notes" class="mt-1 w-full border rounded-xl px-3 py-2" rows="3" placeholder="Alergi, obat, dsb."></textarea>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Simpan Profil</button>
+          <span id="profileSaved" class="hidden text-sm text-emerald-600">Tersimpan ✓</span>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-10 py-8 text-center text-xs text-slate-500">Prototype front‑end (tanpa backend). Integrasi API/ML dapat ditambahkan melalui FastAPI/Next.js sesuai spesifikasi.</footer>
+
+  <!-- Login Modal -->
+  <dialog id="dlgLogin" class="w-[min(460px,95vw)]">
+    <form method="dialog" class="p-5 bg-white rounded-2xl">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold text-lg">Masuk</h3>
+        <button class="p-2 rounded-lg hover:bg-slate-100" onclick="dlgLogin.close()" type="button" aria-label="Tutup">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium">Nama</label>
+          <input id="loginName" type="text" required class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="Nama kamu" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium">Email</label>
+          <input id="loginEmail" type="email" required class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="email@contoh.com" />
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" class="px-3 py-2 rounded-xl bg-white border hover:bg-slate-50" onclick="dlgLogin.close()">Batal</button>
+          <button id="btnDoLogin" type="button" class="px-3 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Masuk</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Add/Edit Schedule Modal -->
+  <dialog id="dlgSchedule" class="w-[min(520px,95vw)]">
+    <form id="formSchedule" class="p-5 bg-white rounded-2xl">
+      <div class="flex items-center justify-between mb-2">
+        <h3 id="dlgTitle" class="font-semibold text-lg">Tambah Jadwal</h3>
+        <button class="p-2 rounded-lg hover:bg-slate-100" onclick="dlgSchedule.close();return false;" aria-label="Tutup">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <input type="hidden" name="id"/>
+      <div class="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium">Nama Aktivitas</label>
+          <input name="title" required class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="Jogging pagi"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">Tanggal (opsional)</label>
+          <input name="date" type="date" class="mt-1 w-full border rounded-xl px-3 py-2"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">Waktu Mulai</label>
+          <input name="time" type="time" required class="mt-1 w-full border rounded-xl px-3 py-2"/>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">Durasi (menit)</label>
+          <input name="duration" type="number" min="5" value="60" required class="mt-1 w-full border rounded-xl px-3 py-2"/>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium">Lokasi (lat,lng)</label>
+          <input name="location" class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="-6.2,106.8 (biarkan kosong untuk lokasi saat ini)"/>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium">Ulangi</label>
+          <select name="repeat" class="mt-1 w-full border rounded-xl px-3 py-2">
+            <option value="none">Tidak</option>
+            <option value="daily">Harian</option>
+            <option value="weekdays">Hari kerja (Sen–Jum)</option>
+            <option value="weekends">Akhir pekan (Sab–Min)</option>
+          </select>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium">Catatan</label>
+          <textarea name="notes" rows="2" class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="Opsional"></textarea>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-3">
+        <button class="px-3 py-2 rounded-xl bg-white border hover:bg-slate-50" onclick="dlgSchedule.close();return false;">Batal</button>
+        <button type="submit" class="px-3 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    /* ===================== UTILITIES & STATE ===================== */
+    const $ = (q, root=document) => root.querySelector(q);
+    const $$ = (q, root=document) => Array.from(root.querySelectorAll(q));
+
+    const state = {
+      user: null, // {name, email}
+      profile: { fullName: '', asthma:false, copd:false, cvd:false, pregnant:false, child:false, notes:'' },
+      schedules: [], // array of schedule objects
+      notifications: [], // {id, ts, text, read:false}
+      sim: { sensors: [], series: {}, center:[-6.2,106.8] },
+    };
+
+    const save = () => {
+      localStorage.setItem('nb_user', JSON.stringify(state.user));
+      localStorage.setItem('nb_profile', JSON.stringify(state.profile));
+      localStorage.setItem('nb_schedules', JSON.stringify(state.schedules));
+      localStorage.setItem('nb_notifications', JSON.stringify(state.notifications));
+    };
+    const load = () => {
+      state.user = JSON.parse(localStorage.getItem('nb_user')||'null');
+      state.profile = Object.assign(state.profile, JSON.parse(localStorage.getItem('nb_profile')||'{}'));
+      state.schedules = JSON.parse(localStorage.getItem('nb_schedules')||'[]');
+      state.notifications = JSON.parse(localStorage.getItem('nb_notifications')||'[]');
+    };
+
+    /* ===================== NAVIGATION ===================== */
+    function showView(name){
+      ['home','map','activity','analytics','profile'].forEach(v=>{
+        const el = document.getElementById('view-'+v);
+        if(v===name){ el.classList.remove('hidden'); } else { el.classList.add('hidden'); }
+      });
+      $('#mobileNav')?.classList.add('hidden');
+      if(name==='map') setTimeout(()=> map?.invalidateSize(), 250);
+    }
+
+    // Event delegation for nav buttons
+    document.addEventListener('click', (e)=>{
+      const btn = e.target.closest('[data-nav]');
+      if(btn){ showView(btn.getAttribute('data-nav')); }
+    });
+
+    $('#btnMenu').addEventListener('click', ()=> $('#mobileNav').classList.toggle('hidden'));
+
+    /* ===================== LOGIN ===================== */
+    const dlgLogin = $('#dlgLogin');
+    const btnLogin = $('#btnLogin');
+    const userChip = $('#userChip');
+    const btnLogout = $('#btnLogout');
+
+    function renderAuth(){
+      if(state.user){
+        btnLogin.classList.add('hidden');
+        userChip.classList.remove('hidden');
+        $('#userName').textContent = state.user.name;
+        $('#userInitial').textContent = state.user.name?.[0]?.toUpperCase()||'U';
+      } else {
+        btnLogin.classList.remove('hidden');
+        userChip.classList.add('hidden');
+      }
+    }
+    btnLogin.addEventListener('click', ()=> dlgLogin.showModal());
+    $('#btnDoLogin').addEventListener('click', ()=>{
+      const name = $('#loginName').value.trim();
+      const email = $('#loginEmail').value.trim();
+      if(!name || !email) return;
+      state.user = {name, email};
+      save(); renderAuth(); dlgLogin.close();
+    });
+    btnLogout.addEventListener('click', ()=>{ state.user=null; save(); renderAuth(); });
+
+    /* ===================== NOTIFICATIONS ===================== */
+    const btnBell = $('#btnBell');
+    const dropdownBell = $('#dropdownBell');
+    const badgeBell = $('#badgeBell');
+    const notifList = $('#notifList');
+
+    btnBell.addEventListener('click', ()=> dropdownBell.classList.toggle('open'));
+    document.addEventListener('click', (e)=>{
+      if(!e.target.closest('#btnBell') && !e.target.closest('#dropdownBell')){ dropdownBell.classList.remove('open'); }
+    });
+
+    function pushNotif(text){
+      const n = { id: 'n'+Date.now()+Math.random().toString(36).slice(2,6), ts: Date.now(), text, read:false };
+      state.notifications.unshift(n); save(); renderNotif();
+    }
+    function renderNotif(){
+      const unread = state.notifications.filter(n=>!n.read).length;
+      if(unread>0){ badgeBell.textContent = unread; badgeBell.classList.remove('hidden'); } else { badgeBell.classList.add('hidden'); }
+      notifList.innerHTML = state.notifications.length? '' : '<div class="text-sm text-slate-500 px-1 py-2">Tidak ada notifikasi.</div>';
+      state.notifications.slice(0,50).forEach(n=>{
+        const d = new Date(n.ts);
+        const div = document.createElement('div');
+        div.className = `p-3 rounded-xl ${n.read? 'bg-slate-50' : 'bg-emerald-50'} border`;
+        div.innerHTML = `<div class="text-xs text-slate-500">${d.toLocaleString()}</div><div class="text-sm">${n.text}</div>`;
+        div.addEventListener('click', ()=>{ n.read=true; save(); renderNotif(); });
+        notifList.appendChild(div);
+      })
+    }
+    $('#btnClearNotif').addEventListener('click', ()=>{ state.notifications.forEach(n=>n.read=true); save(); renderNotif(); });
+
+    /* ===================== SIMULATED SENSOR & PREDICTION ===================== */
+    // Base sensors around Jakarta
+    function initSensors(){
+      // quick grid around Jakarta (approx)
+      const base = [
+        [-6.1754,106.8272,'Monas'],[-6.2088,106.8456,'Gambir'],[-6.1214,106.7741,'Pluit'],
+        [-6.2607,106.7816,'Senayan'],[-6.2146,106.8451,'Menteng'],[-6.2349,106.9896,'Cakung'],
+        [-6.2843,106.8046,'Fatmawati'],[-6.3399,106.7383,'Cinere'],[-6.1534,106.8907,'Tj Priok'],
+        [-6.3667,106.8333,'Depok'],[-6.1781,106.6319,'Cengkareng'],[-6.5963,106.7975,'Bogor']
+      ];
+      state.sim.sensors = base.map(([lat,lng,name],i)=>({ id:'S'+i, lat, lng, name }));
+      // generate per-sensor 0..48h predictions
+      const series = {};
+      const now = Date.now();
+      state.sim.sensors.forEach((s, si)=>{
+        const arr = [];
+        const baseVal = 60 + (si*7 % 40); // different baseline
+        for(let h=0; h<=48; h++){
+          const hourAngle = ( (new Date(now + h*3600_000)).getHours() / 24 ) * 2*Math.PI;
+          const diurnal = Math.sin(hourAngle*1.2 - 0.6) * 35; // day-night swing
+          const weekly = Math.sin((h/48)*2*Math.PI) * 10; // small drift
+          const noise = (Math.random()-0.5)*12;
+          let v = baseVal + diurnal + weekly + noise;
+          // occasional spikes
+          if(Math.random()<0.05) v += 50 + Math.random()*50;
+          v = Math.max(5, Math.min(380, v));
+          arr.push(Math.round(v));
+        }
+        series[s.id] = arr;
+      });
+      state.sim.series = series;
+    }
+
+    function aqiCategory(v){
+      if(v<=50) return ['Baik','text-emerald-600'];
+      if(v<=100) return ['Sedang','text-yellow-600'];
+      if(v<=150) return ['Tidak Sehat bagi Kelompok Sensitif','text-orange-600'];
+      if(v<=200) return ['Tidak Sehat','text-rose-600'];
+      if(v<=300) return ['Sangat Tidak Sehat','text-purple-700'];
+      return ['Berbahaya','text-red-700'];
+    }
+
+    // Inverse distance weighting from sensors for hour h
+    function aqiAt(lat,lng,h){
+      let num=0, den=0;
+      state.sim.sensors.forEach(s=>{
+        const dx = (lat - s.lat), dy = (lng - s.lng);
+        const d2 = dx*dx + dy*dy;
+        const w = 1/(d2 + 1e-6);
+        num += w * state.sim.series[s.id][h];
+        den += w;
+      });
+      return Math.round(num/den);
+    }
+
+    /* ===================== MAP & UI ===================== */
+    let map, heatLayer, sensorMarkers = [];
+    let locChart, trendChart, dailyChart;
+
+    function initMap(){
+      map = L.map('map', { zoomControl: true }).setView(state.sim.center, 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      // sensor markers
+      sensorMarkers = state.sim.sensors.map(s=>{
+        const m = L.marker([s.lat, s.lng]).bindPopup(`<b>${s.name}</b><br/>AQI sekarang: ${state.sim.series[s.id][0]}`);
+        m.on('click', ()=> updateLocationDetail([s.lat,s.lng], s.name));
+        return m.addTo(map);
+      });
+
+      // heat layer initial
+      heatLayer = L.heatLayer(pointsForHour(0), { radius: 28, blur: 26, maxZoom: 16, minOpacity: 0.45 }).addTo(map);
+
+      // Map click -> detail
+      map.on('click', (e)=> updateLocationDetail([e.latlng.lat, e.latlng.lng], 'Titik dipilih'));
+
+      // Geolocate user
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(pos=>{
+          const {latitude, longitude} = pos.coords;
+          state.sim.center = [latitude, longitude];
+          map.setView(state.sim.center, 13);
+          updateMainCards();
+        }, ()=> updateMainCards());
+      } else {
+        updateMainCards();
+      }
+
+      updateLocationDetail(state.sim.center, 'Lokasi Anda');
+      renderMapDashboard(0);
+    }
+
+    function pointsForHour(h){
+      return state.sim.sensors.map(s=>([s.lat, s.lng, Math.max(0.1, state.sim.series[s.id][h]/400)]));
+    }
+
+    function renderMapDashboard(h){
+      const [lat,lng] = state.sim.center;
+      const v = aqiAt(lat,lng,h);
+      const [cat, cls] = aqiCategory(v);
+      $('#mapLoc').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      $('#mapAqi').textContent = v;
+      $('#mapCat').textContent = cat;
+      $('#mapCat').className = `text-xs font-medium ${cls}`;
+      $('#mapAdvice').textContent = buildAdvice(v);
+      $('#homeAqi').textContent = v;
+      $('#homeAqiCat').textContent = cat;
+      $('#homeAdvice').textContent = shortAdvice(v);
+      $('#homeLoc').textContent = 'Terdeksi';
+    }
+
+    function updateLocationDetail([lat,lng], label){
+      $('#locCoords').textContent = `${label} • ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      const data = Array.from({length:49}, (_,i)=> aqiAt(lat,lng,i));
+      const labels = data.map((_,i)=>`+${i}j`);
+      const ds = { labels, datasets: [{ label: 'Prediksi AQI per jam (48j)', data, borderWidth: 2, fill: false, tension: .25 }] };
+      if(locChart){ locChart.destroy(); }
+      const ctx = document.getElementById('chartLoc');
+      locChart = new Chart(ctx, { type: 'line', data: ds, options: { responsive:true, maintainAspectRatio:false, scales: { y: { beginAtZero:false } } } });
+    }
+
+    // Toggles & slider
+    $('#tglSensors').addEventListener('change', (e)=>{
+      sensorMarkers.forEach(m=> e.target.checked ? m.addTo(map) : m.remove());
+    });
+    $('#tglHeatmap').addEventListener('change', (e)=>{
+      if(e.target.checked){ heatLayer.addTo(map); } else { heatLayer.remove(); }
+    });
+    $('#timeSlider').addEventListener('input', (e)=>{
+      const h = +e.target.value;
+      $('#lblHour').textContent = `+${h}j`;
+      heatLayer.setLatLngs(pointsForHour(h));
+      renderMapDashboard(h);
+    });
+
+    /* ===================== ADVICE (LLM-STYLE HEURISTIC) ===================== */
+    function buildAdvice(aqi){
+      const risk = [];
+      if(state.profile.asthma) risk.push('asma');
+      if(state.profile.copd) risk.push('PPOK');
+      if(state.profile.cvd) risk.push('kardiovaskular');
+      if(state.profile.pregnant) risk.push('hamil');
+      if(state.profile.child) risk.push('anak');
+      const grp = risk.length? ` (perhatian: ${risk.join(', ')})` : '';
+      if(aqi<=50) return 'Udara baik, nikmati aktivitas di luar' + grp + '.';
+      if(aqi<=100) return 'Udara sedang, tetap aman. Jika sensitif, pertimbangkan masker saat aktivitas intens' + grp + '.';
+      if(aqi<=150) return 'Kelompok sensitif sebaiknya mengurangi aktivitas luar. Pertimbangkan masker.' + grp;
+      if(aqi<=200) return 'Udara tidak sehat. Batasi aktivitas luar, gunakan masker respirator (KN95/FFP2).' + grp;
+      if(aqi<=300) return 'Sangat tidak sehat. Disarankan tetap di dalam ruangan dengan filtrasi udara.' + grp;
+      return 'Berbahaya. Hindari aktivitas luar, tutup jendela, gunakan filtrasi/air purifier.' + grp;
+    }
+    const shortAdvice = (aqi)=> aqi<=50? 'Aman' : aqi<=100? 'Waspada ringan' : aqi<=150? 'Sensitif waspada' : aqi<=200? 'Batasi luar' : aqi<=300? 'Tetap di dalam' : 'Darurat';
+
+    function updateMainCards(){
+      const v = aqiAt(state.sim.center[0], state.sim.center[1], +$('#timeSlider').value);
+      const [cat] = aqiCategory(v);
+      $('#homeAqi').textContent = v; $('#homeAqiCat').textContent = cat; $('#homeAdvice').textContent = shortAdvice(v);
+      $('#mapLoc').textContent = `${state.sim.center[0].toFixed(4)}, ${state.sim.center[1].toFixed(4)}`;
+      $('#mapAqi').textContent = v; $('#mapCat').textContent = cat; $('#mapAdvice').textContent = buildAdvice(v);
+    }
+
+    /* ===================== SCHEDULES (CRUD) ===================== */
+    const dlgSchedule = $('#dlgSchedule');
+    const formSchedule = $('#formSchedule');
+    const scheduleList = $('#scheduleList');
+
+    $('#btnAddSchedule').addEventListener('click', ()=>{
+      formSchedule.reset(); formSchedule.id.value=''; $('#dlgTitle').textContent='Tambah Jadwal'; dlgSchedule.showModal();
+    });
+
+    formSchedule.addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(formSchedule).entries());
+      const id = data.id || ('sch_'+Date.now());
+      const obj = {
+        id,
+        title: data.title,
+        date: data.date || null,
+        time: data.time,
+        duration: Math.max(5, parseInt(data.duration)||60),
+        location: data.location ? data.location.split(',').map(Number) : null,
+        repeat: data.repeat,
+        notes: data.notes||''
+      };
+      const idx = state.schedules.findIndex(s=>s.id===id);
+      if(idx>=0) state.schedules[idx]=obj; else state.schedules.push(obj);
+      save(); renderSchedules(); dlgSchedule.close();
+    });
+
+    function renderSchedules(){
+      if(!state.schedules.length){
+        scheduleList.innerHTML = '<div class="p-6 rounded-2xl bg-white border shadow-soft text-sm text-slate-600">Belum ada jadwal. Tambahkan aktivitas untuk memicu notifikasi berbasis prediksi AQI.</div>';
+        return;
+      }
+      scheduleList.innerHTML='';
+      state.schedules.forEach(s=>{
+        const div = document.createElement('div');
+        div.className = 'p-4 rounded-2xl bg-white border shadow-soft flex flex-col gap-2';
+        const rep = s.repeat==='none' ? 'Sekali' : s.repeat==='daily' ? 'Harian' : s.repeat==='weekdays' ? 'Hari kerja' : 'Akhir pekan';
+        const loc = s.location ? `${s.location[0].toFixed(4)}, ${s.location[1].toFixed(4)}` : 'Lokasi saat ini';
+        div.innerHTML = `
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="font-semibold">${s.title}</div>
+              <div class="text-xs text-slate-500">${s.date? s.date+' • ':''}${s.time} • ${s.duration} menit • ${rep}</div>
+              <div class="text-xs text-slate-500">Lokasi: ${loc}</div>
+              ${s.notes? `<div class="mt-1 text-sm">${s.notes}</div>` : ''}
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="px-2 py-1 text-xs rounded-lg bg-white border hover:bg-slate-50" data-act="edit">Edit</button>
+              <button class="px-2 py-1 text-xs rounded-lg bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100" data-act="del">Hapus</button>
+            </div>
+          </div>`;
+        div.querySelector('[data-act="edit"]').addEventListener('click', ()=>{
+          $('#dlgTitle').textContent='Edit Jadwal';
+          dlgSchedule.showModal();
+          formSchedule.id.value = s.id;
+          formSchedule.title.value = s.title;
+          formSchedule.date.value = s.date || '';
+          formSchedule.time.value = s.time;
+          formSchedule.duration.value = s.duration;
+          formSchedule.location.value = s.location? s.location.join(',') : '';
+          formSchedule.repeat.value = s.repeat;
+          formSchedule.notes.value = s.notes||'';
+        });
+        div.querySelector('[data-act="del"]').addEventListener('click', ()=>{
+          if(confirm('Hapus jadwal ini?')){ state.schedules = state.schedules.filter(x=>x.id!==s.id); save(); renderSchedules(); }
+        });
+        scheduleList.appendChild(div);
+      });
+    }
+
+    /* ===================== PROFILE ===================== */
+    const formProfile = $('#formProfile');
+    formProfile.addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(formProfile).entries());
+      state.profile.fullName = data.fullName || '';
+      state.profile.asthma = !!data.asthma;
+      state.profile.copd = !!data.copd;
+      state.profile.cvd = !!data.cvd;
+      state.profile.pregnant = !!data.pregnant;
+      state.profile.child = !!data.child;
+      state.profile.notes = data.notes || '';
+      save();
+      $('#profileSaved').classList.remove('hidden');
+      setTimeout(()=> $('#profileSaved').classList.add('hidden'), 1600);
+    });
+
+    function renderProfile(){
+      formProfile.fullName.value = state.profile.fullName||'';
+      formProfile.asthma.checked = !!state.profile.asthma;
+      formProfile.copd.checked = !!state.profile.copd;
+      formProfile.cvd.checked = !!state.profile.cvd;
+      formProfile.pregnant.checked = !!state.profile.pregnant;
+      formProfile.child.checked = !!state.profile.child;
+      formProfile.notes.value = state.profile.notes||'';
+    }
+
+    /* ===================== ANALYTICS (EXPOSURE) ===================== */
+    function withinSchedule(date, s){
+      // date: JS Date to check (start minute) vs schedule config (repeat/date/time)
+      const dow = date.getDay(); // 0 Sun ... 6 Sat
+      if(s.date){ // specific date
+        const ds = new Date(s.date + 'T00:00:00');
+        if(ds.toDateString() !== date.toDateString()) return false;
+      } else {
+        if(s.repeat==='weekdays' && (dow===0 || dow===6)) return false;
+        if(s.repeat==='weekends' && (dow!==0 && dow!==6)) return false;
+        if(s.repeat==='none'){
+          // only today by default? treat as one-time but unknown date -> ignore
+          return false;
+        }
+      }
+      // time window
+      const [hh,mm] = s.time.split(':').map(Number);
+      const start = new Date(date); start.setHours(hh,mm,0,0);
+      const end = new Date(start.getTime() + s.duration*60_000);
+      return date>=start && date<end;
+    }
+
+    function estimateExposureSeries(days=14){
+      const now = new Date();
+      const series = []; // per day total exposure (sum of AQI * hours weight)
+      const peaks = [];  // high moments
+      for(let d=days-1; d>=0; d--){
+        const day = new Date(now.getFullYear(), now.getMonth(), now.getDate()-d);
+        let total=0; let dailyMoments=[];
+        for(let h=0; h<24; h++){
+          const ts = new Date(day); ts.setHours(h,0,0,0);
+          // sample every hour midpoint
+          state.schedules.forEach(s=>{
+            if(s.repeat==='none' && !s.date) return; // skip undefined one-time
+            if(withinSchedule(ts, s)){
+              const loc = s.location || state.sim.center;
+              const off = Math.min(48, Math.max(0, Math.round((ts - now)/3600_000 + 24))); // map past days around now to 0..48
+              const aqi = aqiAt(loc[0], loc[1], Math.max(0, Math.min(48, off)));
+              total += aqi * 1; // per hour weight
+              dailyMoments.push({ts: +ts, aqi, title: s.title, loc});
+            }
+          });
+        }
+        // top moments for the day
+        dailyMoments.sort((a,b)=> b.aqi - a.aqi);
+        peaks.push(...dailyMoments.slice(0,2));
+        series.push({ day, total: Math.round(total) });
+      }
+      return { series, peaks };
+    }
+
+    function renderAnalytics(){
+      const { series, peaks } = estimateExposureSeries(14);
+      // Trend chart (14 days)
+      const labels = series.map(x=> x.day.toLocaleDateString('id-ID', { day:'2-digit', month:'2-digit' }));
+      const data = series.map(x=> x.total);
+      if(trendChart) trendChart.destroy();
+      trendChart = new Chart($('#chartTrend'), { type:'line', data:{ labels, datasets:[{ label:'Total paparan harian (relatif)', data, borderWidth:2, fill:false, tension:.25 }] }, options:{ responsive:true, maintainAspectRatio:false } });
+      // Daily bar (last 7)
+      const last7 = series.slice(-7);
+      const labels7 = last7.map(x=> x.day.toLocaleDateString('id-ID', { weekday:'short' }));
+      const data7 = last7.map(x=> x.total);
+      if(dailyChart) dailyChart.destroy();
+      dailyChart = new Chart($('#chartDaily'), { type:'bar', data:{ labels: labels7, datasets:[{ label:'Paparan (relatif)', data: data7 }] }, options:{ responsive:true, maintainAspectRatio:false } });
+
+      // Summary cards
+      const w1 = series.slice(-7).reduce((a,b)=>a+b.total,0);
+      const w0 = series.slice(-14,-7).reduce((a,b)=>a+b.total,0) || 1;
+      const diff = Math.round(((w1-w0)/w0)*100);
+      $('#summaryCards').innerHTML = `
+        <div class='p-3 rounded-xl border bg-emerald-50'><div class='text-xs text-slate-600'>Perubahan minggu ini</div><div class='text-xl font-bold'>${diff>0? '+'+diff: diff}%</div></div>
+        <div class='p-3 rounded-xl border'><div class='text-xs text-slate-600'>Total paparan 7 hari</div><div class='text-xl font-bold'>${w1}</div></div>
+        <div class='p-3 rounded-xl border'><div class='text-xs text-slate-600'>Hari terendah</div><div class='text-xl font-bold'>${labels[last7.findIndex(x=>x.total===Math.min(...data7)) + (series.length-7)]||'-'}</div></div>`;
+
+      // Peaks list
+      const sortedPeaks = peaks.sort((a,b)=> b.aqi - a.aqi).slice(0,8);
+      const fmt = (ts)=> new Date(ts).toLocaleString('id-ID', { weekday:'short', hour:'2-digit', minute:'2-digit' });
+      $('#peakList').innerHTML = sortedPeaks.map(p=>
+        `<div class='p-3 rounded-xl border bg-white flex items-center justify-between'>
+           <div>
+             <div class='font-medium'>${p.title}</div>
+             <div class='text-xs text-slate-500'>${fmt(p.ts)} • ${p.loc[0].toFixed(3)}, ${p.loc[1].toFixed(3)}</div>
+           </div>
+           <div class='text-right'>
+             <div class='text-xs text-slate-500'>AQI</div>
+             <div class='text-lg font-bold'>${p.aqi}</div>
+           </div>
+         </div>`
+      ).join('');
+    }
+
+    /* ===================== NOTIFICATION ENGINE (SIMULATED) ===================== */
+    function checkSchedulesForAlerts(){
+      const now = new Date();
+      state.schedules.forEach(s=>{
+        // Check 2h window around start
+        const [hh,mm] = s.time.split(':').map(Number);
+        const start = s.date? new Date(`${s.date}T${s.time}:00`) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0);
+        const diffMin = (start - now)/60000;
+        // Determine if should alert (approx 60min before activity)
+        const shouldCheckRepeat = !s.date && (s.repeat!=='none');
+        const correctDay = shouldCheckRepeat ? withinSchedule(start, {...s, date:null}) : true;
+        if(correctDay && diffMin<=60 && diffMin>=0){
+          const loc = s.location || state.sim.center;
+          // get predicted 1h later from now for that location
+          const off = Math.min(48, Math.max(0, Math.round((start - now)/3600_000)));
+          const aqi = aqiAt(loc[0], loc[1], off);
+          const [cat] = aqiCategory(aqi);
+          const msg = `Aktivitas "${s.title}" ${s.date? 'pada '+s.date : 'hari ini'} ${s.time}. Perkiraan AQI: ${aqi} (${cat}). ${buildAdvice(aqi)}`;
+          pushNotif(msg);
+        }
+      });
+    }
+
+    $('#btnCheckNow').addEventListener('click', checkSchedulesForAlerts);
+    // Optionally run periodic checks (demo)
+    setInterval(()=>{ if(document.visibilityState==='visible') checkSchedulesForAlerts(); }, 60_000);
+
+    /* ===================== INIT ===================== */
+    function hydrate(){
+      load(); renderAuth(); renderNotif(); renderProfile(); renderSchedules();
+      initSensors(); initMap(); renderAnalytics();
+    }
+    hydrate();
+
+    // Default landing
+    showView('home');
+  </script>
+</body>
+</html>
