@@ -8,8 +8,8 @@ BASE_URL = "http://api.openweathermap.org/data/2.5/air_pollution/history"
 params = {
     'lat': -6.29225, 
     'lon': 106.806111,
-    'start': '1596646800',
-    'end': '1723000799',
+    # 'start': '1596646800',
+    # 'end': '1723000799',
     'appid': '29cdbe219b69b47d1c13fea1a85bf2e6'
     }
 
